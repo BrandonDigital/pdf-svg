@@ -114,11 +114,17 @@ export class PDFWriter {
   }
 
   addObject(ref, dict, stream) {
+    if (typeof dict === "string") {
+      // Direct object content (like arrays)
+      this.objects[ref] = dict;
+      return;
+    }
+
     const lines = ["<<"];
 
     for (const [key, value] of Object.entries(dict)) {
       if (value !== null && value !== undefined) {
-        lines.push(`/${key} ${value}`);
+        lines.push(`  /${key} ${value}`);
       }
     }
 
@@ -126,11 +132,9 @@ export class PDFWriter {
     let obj = lines.join("\n");
 
     if (stream) {
-      obj += "\nstream";
-      // Don't add newline before binary data
-      this.objects[ref] = obj;
-      this.objects[ref] +=
-        "\n" + Buffer.from(stream).toString("binary") + "\nendstream";
+      obj += "\nstream\n";
+      this.objects[ref] =
+        obj + Buffer.from(stream).toString("binary") + "\nendstream";
       return;
     }
 
@@ -189,4 +193,3 @@ export class PDFWriter {
     return lines.join("\n");
   }
 }
- 

@@ -219,6 +219,11 @@ export class PDFDocument {
     return this;
   }
 
+  // Convenience method for defining spot colors with CMYK values
+  defineSpotColorCMYK(name, c, m, y, k) {
+    return this.defineSpotColor(name, { c, m, y, k });
+  }
+
   fillSpotColor(name, tint = 1.0) {
     const spotColor = this.spotColors.get(name);
     if (spotColor) {

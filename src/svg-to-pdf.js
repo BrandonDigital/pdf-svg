@@ -1,15 +1,25 @@
+import { SVGParser, createElement } from "./svg-parser.js";
+import { SVGPath } from "./svg-path.js";
+
 export function SVGtoPDF(doc, svg, x = 0, y = 0, options = {}) {
-  const parser = new SVGParser(doc, options);
+  const renderer = new SVGRenderer(doc, options);
 
   // Parse SVG
   let svgElement;
   if (typeof svg === "string") {
-    // For Node.js environments, we'll use a simple regex-based parser
-    // In a browser environment, you would use DOMParser
-    svgElement = parseSVGString(svg);
+    const parser = new SVGParser();
+    svgElement = parser.parse(svg);
   } else {
     svgElement = svg;
   }
+
+  if (!svgElement) {
+    console.warn("SVGtoPDF: No valid SVG element found");
+    return;
+  }
+
+  // Create element accessor
+  const element = createElement(svgElement);
 
   // Save state
   doc.save();
@@ -18,29 +28,46 @@ export function SVGtoPDF(doc, svg, x = 0, y = 0, options = {}) {
   doc.translate(x, y);
 
   // Process viewBox and dimensions
-  const viewBox = svgElement.getAttribute("viewBox");
+  const viewBox = element.getAttribute("viewBox");
   const width =
-    parseFloat(svgElement.getAttribute("width")) || options.width || doc.width;
+    parseFloat(element.getAttribute("width")) || options.width || 100;
   const height =
-    parseFloat(svgElement.getAttribute("height")) ||
-    options.height ||
-    doc.height;
+    parseFloat(element.getAttribute("height")) || options.height || 100;
 
   if (viewBox) {
     const [vx, vy, vw, vh] = viewBox.split(/\s+/).map(parseFloat);
-    const scale = Math.min(width / vw, height / vh);
-    doc.scale(scale, scale);
-    doc.translate(-vx, -vy);
+    if (!isNaN(vw) && !isNaN(vh) && vw > 0 && vh > 0) {
+      const scale = Math.min(width / vw, height / vh);
+
+      // Flip Y-axis to convert from SVG coordinate system to PDF coordinate system
+      doc.translate(0, height);
+      doc.scale(scale, -scale);
+      doc.translate(-vx, -vy);
+    }
+  } else if (options.width && options.height) {
+    // If no viewBox but dimensions provided, scale to fit
+    const svgWidth = parseFloat(element.getAttribute("width")) || 100;
+    const svgHeight = parseFloat(element.getAttribute("height")) || 100;
+    const scaleX = options.width / svgWidth;
+    const scaleY = options.height / svgHeight;
+
+    // Flip Y-axis
+    doc.translate(0, options.height);
+    doc.scale(scaleX, -scaleY);
+  } else {
+    // Default case: just flip Y-axis
+    doc.translate(0, height);
+    doc.scale(1, -1);
   }
 
   // Parse and render
-  parser.parseElement(svgElement);
+  renderer.renderElement(element);
 
   // Restore state
   doc.restore();
 }
 
-class SVGParser {
+class SVGRenderer {
   constructor(doc, options) {
     this.doc = doc;
     this.options = options;
@@ -48,7 +75,7 @@ class SVGParser {
     this.spotColors = doc.spotColors;
   }
 
-  parseElement(element, inheritedStyle = {}) {
+  renderElement(element, inheritedStyle = {}) {
     const tagName = element.tagName?.toLowerCase();
     if (!tagName) return;
 
@@ -67,8 +94,10 @@ class SVGParser {
       case "svg":
       case "g":
         // Process children
-        for (let child of element.children) {
-          this.parseElement(child, style);
+        if (element.children) {
+          for (let child of element.children) {
+            this.renderElement(createElement(child), style);
+          }
         }
         break;
 
@@ -245,7 +274,8 @@ class SVGParser {
     const d = element.getAttribute("d");
     if (!d) return;
 
-    this.parsePath(d);
+    // Use the SVGPath parser
+    SVGPath.apply(this.doc, d);
     this.applyStyle(style);
   }
 
@@ -291,115 +321,6 @@ class SVGParser {
       .map(parseFloat);
   }
 
-  parsePath(d) {
-    // Simple SVG path parser
-    const commands = d.match(/[MmLlHhVvCcSsQqTtAaZz][^MmLlHhVvCcSsQqTtAaZz]*/g);
-    if (!commands) return;
-
-    let currentX = 0;
-    let currentY = 0;
-    let startX = 0;
-    let startY = 0;
-
-    commands.forEach((cmd) => {
-      const type = cmd[0];
-      const values = cmd
-        .slice(1)
-        .trim()
-        .split(/[\s,]+/)
-        .map(parseFloat)
-        .filter((v) => !isNaN(v));
-
-      switch (type) {
-        case "M":
-          currentX = values[0];
-          currentY = values[1];
-          startX = currentX;
-          startY = currentY;
-          this.doc.moveTo(currentX, currentY);
-          break;
-        case "m":
-          currentX += values[0];
-          currentY += values[1];
-          startX = currentX;
-          startY = currentY;
-          this.doc.moveTo(currentX, currentY);
-          break;
-        case "L":
-          currentX = values[0];
-          currentY = values[1];
-          this.doc.lineTo(currentX, currentY);
-          break;
-        case "l":
-          currentX += values[0];
-          currentY += values[1];
-          this.doc.lineTo(currentX, currentY);
-          break;
-        case "H":
-          currentX = values[0];
-          this.doc.lineTo(currentX, currentY);
-          break;
-        case "h":
-          currentX += values[0];
-          this.doc.lineTo(currentX, currentY);
-          break;
-        case "V":
-          currentY = values[0];
-          this.doc.lineTo(currentX, currentY);
-          break;
-        case "v":
-          currentY += values[0];
-          this.doc.lineTo(currentX, currentY);
-          break;
-        case "C":
-          this.doc.bezierCurveTo(
-            values[0],
-            values[1],
-            values[2],
-            values[3],
-            values[4],
-            values[5]
-          );
-          currentX = values[4];
-          currentY = values[5];
-          break;
-        case "c":
-          this.doc.bezierCurveTo(
-            currentX + values[0],
-            currentY + values[1],
-            currentX + values[2],
-            currentY + values[3],
-            currentX + values[4],
-            currentY + values[5]
-          );
-          currentX += values[4];
-          currentY += values[5];
-          break;
-        case "Q":
-          this.doc.quadraticCurveTo(values[0], values[1], values[2], values[3]);
-          currentX = values[2];
-          currentY = values[3];
-          break;
-        case "q":
-          this.doc.quadraticCurveTo(
-            currentX + values[0],
-            currentY + values[1],
-            currentX + values[2],
-            currentY + values[3]
-          );
-          currentX += values[2];
-          currentY += values[3];
-          break;
-        case "Z":
-        case "z":
-          this.doc.closePath();
-          currentX = startX;
-          currentY = startY;
-          break;
-      }
-    });
-  }
-
   applyStyle(style, strokeOnly = false) {
     const fill = style.fill !== undefined ? style.fill : "black";
     const stroke = style.stroke;
@@ -408,24 +329,29 @@ class SVGParser {
     const strokeWidth = parseFloat(style["stroke-width"] || 1);
     const fillRule = style["fill-rule"] || "nonzero";
 
+    let hasFill = false;
+    let hasStroke = false;
+
     // Apply colors and styles
     if (fill && fill !== "none" && !strokeOnly) {
       this.applyColor(fill, "fill");
       this.doc.fillOpacity(fillOpacity);
+      hasFill = true;
     }
 
     if (stroke && stroke !== "none") {
       this.applyColor(stroke, "stroke");
       this.doc.strokeOpacity(strokeOpacity);
       this.doc.lineWidth(strokeWidth);
+      hasStroke = true;
     }
 
     // Perform fill/stroke operations
-    if (fill && fill !== "none" && stroke && stroke !== "none" && !strokeOnly) {
+    if (hasFill && hasStroke) {
       this.doc.fillAndStroke(fillRule);
-    } else if (fill && fill !== "none" && !strokeOnly) {
+    } else if (hasFill) {
       this.doc.fill(fillRule);
-    } else if (stroke && stroke !== "none") {
+    } else if (hasStroke) {
       this.doc.stroke();
     }
   }
@@ -450,8 +376,28 @@ class SVGParser {
       return;
     }
 
-    // Convert to CMYK if requested
+    // Special handling for white in CMYK mode
     if (this.options.useCMYK) {
+      const colorLower = color.toLowerCase();
+
+      // Check if color is white
+      if (
+        colorLower === "white" ||
+        colorLower === "#ffffff" ||
+        colorLower === "#fff" ||
+        colorLower === "rgb(255,255,255)" ||
+        colorLower === "rgb(255, 255, 255)"
+      ) {
+        // In CMYK, white is 0,0,0,0
+        if (type === "fill") {
+          this.doc.fillColorCMYK(0, 0, 0, 0);
+        } else {
+          this.doc.strokeColorCMYK(0, 0, 0, 0);
+        }
+        return;
+      }
+
+      // Convert other colors to CMYK
       const rgb = this.parseColor(color);
       if (rgb) {
         const cmyk = this.colorSpace.rgbToCMYK(rgb.r, rgb.g, rgb.b);
@@ -524,54 +470,4 @@ class SVGParser {
 
     return { r: 0, g: 0, b: 0 };
   }
-}
-
-// Simple SVG string parser for Node.js environments
-function parseSVGString(svgString) {
-  const elements = [];
-  const elementStack = [];
-
-  // Extract SVG attributes
-  const svgMatch = svgString.match(/<svg([^>]*)>/);
-  const svgAttrs = svgMatch ? parseAttributes(svgMatch[1]) : {};
-
-  const root = {
-    tagName: "svg",
-    getAttribute: (name) => svgAttrs[name] || null,
-    children: elements,
-  };
-
-  // Simple regex-based parser for basic SVG elements
-  const elementRegex = /<(\w+)([^>]*)(\/>|>)/g;
-  let match;
-
-  while ((match = elementRegex.exec(svgString)) !== null) {
-    const tagName = match[1].toLowerCase();
-    const attrs = parseAttributes(match[2]);
-    const selfClosing = match[3] === "/>";
-
-    if (tagName === "svg") continue;
-
-    const element = {
-      tagName,
-      getAttribute: (name) => attrs[name] || null,
-      children: [],
-    };
-
-    elements.push(element);
-  }
-
-  return root;
-}
-
-function parseAttributes(attrString) {
-  const attrs = {};
-  const attrRegex = /(\w+(?:-\w+)*)="([^"]*)"/g;
-  let match;
-
-  while ((match = attrRegex.exec(attrString)) !== null) {
-    attrs[match[1]] = match[2];
-  }
-
-  return attrs;
 }
