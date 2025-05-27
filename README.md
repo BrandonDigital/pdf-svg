@@ -252,3 +252,155 @@ new PDFDocument(options);
 ## License
 
 MIT
+
+## Usage Example: CMYK PDF with SVG Paths and mm Units
+
+```js
+import { PDFDocument } from "pdf-svg";
+import fs from "fs";
+
+// Helper: mm to points
+const mm = (val) => val * 2.835;
+
+// SVG path for the character 'a' (no fill specified)
+const svgContent = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 37.85 54.14">
+  <path d="M.01,53.64L12.02.32c.04-.19.21-.32.4-.32h12.88c.19,0,.36.13.4.32l12.12,53.32c.06.26-.14.5-.4.5h-10.01c-.2,0-.36-.14-.4-.33l-2.54-12.94c-.04-.19-.21-.33-.4-.33h-10.93c-.2,0-.37.14-.4.33l-2.47,12.94c-.04.19-.21.33-.4.33H.41c-.26,0-.46-.24-.4-.5ZM14.62,32.41h8.1c.12,0,.22-.11.2-.24l-4.08-21.44c-.04-.22-.35-.22-.39,0l-4.02,21.44c-.02.12.07.24.2.24Z"/>
+</svg>
+`;
+
+// Create a PDF document sized 500mm x 300mm
+const doc = new PDFDocument({
+  width: mm(500),
+  height: mm(300),
+});
+
+// Draw a CMYK background rectangle
+doc.rect(0, 0, mm(500), mm(300));
+doc.fillColorCMYK(20, 20, 20, 100);
+doc.fill();
+
+// Draw a rectangle with a spot color stroke
+doc.defineSpotColor("thru-cut", { c: 88, m: 30, y: 0, k: 0 });
+doc.rect(mm(10), mm(10), mm(480), mm(280));
+doc.strokeSpotColor("thru-cut");
+doc.lineWidth(2);
+doc.stroke();
+
+// Add SVG in the center, using only CMYK colors
+const centerX = mm(500) / 2;
+const centerY = mm(300) / 2;
+doc.addSVG(svgContent, centerX - 50, centerY - 70, {
+  width: 100,
+  height: 140,
+  useCMYK: true, // Ensures all SVG colors are converted to CMYK
+  colorCallback: (color) => {
+    // Override any color with white (CMYK knockout)
+    return "white";
+  },
+});
+
+// Output the PDF
+const pdfData = doc.end();
+fs.writeFileSync("output.pdf", pdfData);
+```
+
+**Key Points:**
+
+- Always use `useCMYK: true` in `addSVG` to ensure all SVG colors are converted to CMYK.
+- Use `colorCallback` to override SVG colors in code instead of modifying the SVG.
+- Use millimeters for all dimensions by converting to points (`mm(val)`).
+- Spot colors can be defined and used for strokes or fills.
+- All numbers are automatically validated and formatted to prevent "Too few operands" errors.
+
+### Alternative Ways to Set SVG Colors in Code
+
+#### Method 1: Color Callback (Override All Colors)
+
+```js
+doc.addSVG(svgContent, x, y, {
+  useCMYK: true,
+  colorCallback: (color) => {
+    return "white"; // Force all colors to white
+  },
+});
+```
+
+#### Method 2: Spot Color Mapping
+
+```js
+// Define spot colors first
+doc.defineSpotColor("knockout", { c: 0, m: 0, y: 0, k: 0 });
+
+doc.addSVG(svgContent, x, y, {
+  useCMYK: true,
+  spotColorMap: {
+    black: { name: "knockout", tint: 1.0 }, // Map default black to white
+    "#000000": { name: "knockout", tint: 1.0 },
+  },
+});
+```
+
+#### Method 3: Conditional Color Callback
+
+```js
+doc.addSVG(svgContent, x, y, {
+  useCMYK: true,
+  colorCallback: (color) => {
+    if (color === "black" || color === "#000000") {
+      return "white"; // Convert black to white
+    }
+    return color; // Keep other colors unchanged
+  },
+});
+```
+
+#### Method 4: Custom CMYK Colors
+
+```js
+doc.addSVG(svgContent, x, y, {
+  useCMYK: true,
+  colorCallback: (color) => {
+    // Return a custom CMYK color as an object
+    return { c: 10, m: 50, y: 80, k: 5 }; // Custom CMYK values
+  },
+});
+```
+
+#### Method 5: Custom Spot Color
+
+```js
+// Define your custom spot color first
+doc.defineSpotColor("custom-blue", { c: 85, m: 50, y: 0, k: 0 });
+
+doc.addSVG(svgContent, x, y, {
+  useCMYK: true,
+  spotColorMap: {
+    black: { name: "custom-blue", tint: 1.0 },
+    "#000000": { name: "custom-blue", tint: 0.8 }, // 80% tint
+  },
+});
+```
+
+#### Method 6: Multiple Custom Colors
+
+```js
+doc.addSVG(svgContent, x, y, {
+  useCMYK: true,
+  colorCallback: (color) => {
+    switch (color) {
+      case "black":
+      case "#000000":
+        return { c: 0, m: 0, y: 0, k: 0 }; // White knockout
+      case "red":
+      case "#FF0000":
+        return { c: 0, m: 100, y: 100, k: 0 }; // Pure red in CMYK
+      case "blue":
+      case "#0000FF":
+        return { c: 100, m: 100, y: 0, k: 0 }; // Pure blue in CMYK
+      default:
+        return color; // Keep other colors unchanged
+    }
+  },
+});
+```

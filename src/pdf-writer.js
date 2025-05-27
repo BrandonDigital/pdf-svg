@@ -7,6 +7,14 @@ export class PDFWriter {
     this.xref = [];
   }
 
+  formatNumber(num) {
+    if (typeof num !== "number" || !isFinite(num)) {
+      console.warn(`Invalid number in PDF: ${num}, using 0`);
+      return "0";
+    }
+    return Number(num.toFixed(6)).toString();
+  }
+
   generatePDF(doc) {
     // Reset state
     this.objectCount = 0;
@@ -53,7 +61,9 @@ export class PDFWriter {
     this.addObject(pageRef, {
       Type: "/Page",
       Parent: `${pagesRef} 0 R`,
-      MediaBox: `[0 0 ${doc.width} ${doc.height}]`,
+      MediaBox: `[0 0 ${this.formatNumber(doc.width)} ${this.formatNumber(
+        doc.height
+      )}]`,
       Contents: `${contentRef} 0 R`,
       Resources: `${resourcesRef} 0 R`,
     });
@@ -157,7 +167,11 @@ export class PDFWriter {
           FunctionType: 2,
           Domain: "[0 1]",
           C0: "[0 0 0 0]", // 0% tint = no color
-          C1: `[${cs.tintTransform.c} ${cs.tintTransform.m} ${cs.tintTransform.y} ${cs.tintTransform.k}]`, // 100% tint
+          C1: `[${this.formatNumber(cs.tintTransform.c)} ${this.formatNumber(
+            cs.tintTransform.m
+          )} ${this.formatNumber(cs.tintTransform.y)} ${this.formatNumber(
+            cs.tintTransform.k
+          )}]`, // 100% tint
           N: 1,
         });
 

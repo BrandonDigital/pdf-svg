@@ -361,6 +361,15 @@ class SVGRenderer {
     if (this.options.colorCallback) {
       const result = this.options.colorCallback(color);
       if (result) {
+        // Handle CMYK object returned from colorCallback
+        if (typeof result === "object" && result.c !== undefined) {
+          if (type === "fill") {
+            this.doc.fillColorCMYK(result.c, result.m, result.y, result.k);
+          } else {
+            this.doc.strokeColorCMYK(result.c, result.m, result.y, result.k);
+          }
+          return;
+        }
         color = result;
       }
     }

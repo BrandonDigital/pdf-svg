@@ -29,19 +29,39 @@ export class PDFDocument {
     return this;
   }
 
+  // Helper method to format numbers for PDF
+  _formatNumber(num) {
+    if (typeof num !== "number" || !isFinite(num)) {
+      console.warn(`Invalid number in PDF: ${num}, using 0`);
+      return "0";
+    }
+    // Round to 6 decimal places to avoid precision issues
+    return Number(num.toFixed(6)).toString();
+  }
+
   // Path drawing
   moveTo(x, y) {
-    this.contentStream.push(`${x} ${y} m`);
+    this.contentStream.push(
+      `${this._formatNumber(x)} ${this._formatNumber(y)} m`
+    );
     return this;
   }
 
   lineTo(x, y) {
-    this.contentStream.push(`${x} ${y} l`);
+    this.contentStream.push(
+      `${this._formatNumber(x)} ${this._formatNumber(y)} l`
+    );
     return this;
   }
 
   bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y) {
-    this.contentStream.push(`${cp1x} ${cp1y} ${cp2x} ${cp2y} ${x} ${y} c`);
+    this.contentStream.push(
+      `${this._formatNumber(cp1x)} ${this._formatNumber(
+        cp1y
+      )} ${this._formatNumber(cp2x)} ${this._formatNumber(
+        cp2y
+      )} ${this._formatNumber(x)} ${this._formatNumber(y)} c`
+    );
     return this;
   }
 
@@ -61,7 +81,11 @@ export class PDFDocument {
 
   // Rectangle drawing
   rect(x, y, width, height) {
-    this.contentStream.push(`${x} ${y} ${width} ${height} re`);
+    this.contentStream.push(
+      `${this._formatNumber(x)} ${this._formatNumber(y)} ${this._formatNumber(
+        width
+      )} ${this._formatNumber(height)} re`
+    );
     return this;
   }
 
@@ -280,7 +304,13 @@ export class PDFDocument {
   }
 
   transform(a, b, c, d, e, f) {
-    this.contentStream.push(`${a} ${b} ${c} ${d} ${e} ${f} cm`);
+    this.contentStream.push(
+      `${this._formatNumber(a)} ${this._formatNumber(b)} ${this._formatNumber(
+        c
+      )} ${this._formatNumber(d)} ${this._formatNumber(e)} ${this._formatNumber(
+        f
+      )} cm`
+    );
 
     // Update CTM
     const [a1, b1, c1, d1, e1, f1] = this._ctm;
@@ -311,7 +341,7 @@ export class PDFDocument {
   }
 
   _setLineWidth() {
-    this.contentStream.push(`${this.currentLineWidth} w`);
+    this.contentStream.push(`${this._formatNumber(this.currentLineWidth)} w`);
   }
 
   _setFillOpacity() {
@@ -345,12 +375,16 @@ export class PDFDocument {
     switch (color.type) {
       case "rgb":
         this.contentStream.push(
-          `${color.r} ${color.g} ${color.b} ${type === "fill" ? "rg" : "RG"}`
+          `${this._formatNumber(color.r)} ${this._formatNumber(
+            color.g
+          )} ${this._formatNumber(color.b)} ${type === "fill" ? "rg" : "RG"}`
         );
         break;
       case "cmyk":
         this.contentStream.push(
-          `${color.c} ${color.m} ${color.y} ${color.k} ${
+          `${this._formatNumber(color.c)} ${this._formatNumber(
+            color.m
+          )} ${this._formatNumber(color.y)} ${this._formatNumber(color.k)} ${
             type === "fill" ? "k" : "K"
           }`
         );
@@ -359,7 +393,7 @@ export class PDFDocument {
         const resourceName = color.spotColor.resourceName;
         this.contentStream.push(
           `/${resourceName} ${type === "fill" ? "cs" : "CS"}`,
-          `${color.tint} ${type === "fill" ? "scn" : "SCN"}`
+          `${this._formatNumber(color.tint)} ${type === "fill" ? "scn" : "SCN"}`
         );
         break;
     }
