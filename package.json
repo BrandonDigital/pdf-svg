@@ -1,0 +1,49 @@
+{
+  "name": "pdf-svg",
+  "version": "1.0.0",
+  "description": "Minimal PDF generator with SVG rendering, CMYK and spot color support",
+  "main": "lib/index.js",
+  "module": "lib/index.js",
+  "browser": "lib/pdf-svg.browser.js",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs",
+      "browser": "./lib/pdf-svg.browser.js"
+    }
+  },
+  "scripts": {
+    "build": "node build.js",
+    "test": "node test/example.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "pdf",
+    "svg",
+    "cmyk",
+    "spot-color",
+    "pantone",
+    "vector",
+    "graphics",
+    "print"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/pdf-svg.git"
+  },
+  "files": [
+    "lib/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "pako": "^2.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.19.0"
+  }
+}
