@@ -5,6 +5,7 @@ A minimal, standalone PDF generator with SVG rendering, CMYK and spot color supp
 ## Features
 
 - **Minimal and standalone** - No dependencies on PDFKit or SVG-to-PDFKit
+- **TypeScript support** - Full type definitions included
 - **CMYK color space** - Native support for CMYK colors
 - **Spot colors** - Define and use spot colors (e.g., Pantone colors)
 - **SVG parsing** - Parse and render SVG elements to PDF
@@ -32,7 +33,7 @@ npm install pdf-svg
 
 ## Usage
 
-### Basic Example
+### Basic Example (JavaScript)
 
 ```javascript
 import { PDFDocument } from "pdf-svg";
@@ -56,6 +57,44 @@ doc.fill();
 
 // Generate PDF
 const pdfData = doc.end();
+fs.writeFileSync("output.pdf", pdfData);
+```
+
+### TypeScript Example
+
+```typescript
+import { PDFDocument, CMYKColor, SVGOptions } from "pdf-svg";
+import fs from "fs";
+
+// Create a new PDF document with type safety
+const doc = new PDFDocument({
+  width: 595.28,
+  height: 841.89,
+});
+
+// Define spot color with proper typing
+const pantoneRed: CMYKColor = { c: 0, m: 91, y: 76, k: 0 };
+doc.defineSpotColor("PantoneRed", pantoneRed);
+
+// Use spot color
+doc.rect(50, 50, 100, 50);
+doc.fillSpotColor("PantoneRed", 1.0);
+doc.fill();
+
+// SVG with options
+const svgOptions: SVGOptions = {
+  useCMYK: true,
+  spotColorMap: {
+    "#FF0000": { name: "PantoneRed", tint: 0.8 },
+  },
+};
+
+const svg =
+  '<svg><rect x="10" y="10" width="50" height="50" fill="#FF0000"/></svg>';
+doc.addSVG(svg, 100, 100, svgOptions);
+
+// Generate PDF
+const pdfData: Buffer = doc.end();
 fs.writeFileSync("output.pdf", pdfData);
 ```
 
@@ -123,6 +162,27 @@ doc.fill();
 // Restore state
 doc.restore();
 ```
+
+## TypeScript Support
+
+This package includes full TypeScript type definitions. Import types for better development experience:
+
+```typescript
+import {
+  PDFDocument,
+  PDFDocumentOptions,
+  CMYKColor,
+  SVGOptions,
+  SpotColorInfo,
+} from "pdf-svg";
+```
+
+### Key Types
+
+- `PDFDocumentOptions` - Constructor options for PDFDocument
+- `CMYKColor` - CMYK color values (c, m, y, k as numbers 0-100)
+- `SVGOptions` - Options for SVG rendering
+- `SpotColorInfo` - Spot color configuration
 
 ## API Reference
 

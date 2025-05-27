@@ -5,9 +5,11 @@
   "main": "lib/index.js",
   "module": "lib/index.js",
   "browser": "lib/pdf-svg.browser.js",
+  "types": "lib/index.d.ts",
   "type": "module",
   "exports": {
     ".": {
+      "types": "./lib/index.d.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs",
       "browser": "./lib/pdf-svg.browser.js"
@@ -16,6 +18,7 @@
   "scripts": {
     "build": "node build.js",
     "test": "node test/example.js",
+    "test:types": "tsc --noEmit test/typescript-test.ts",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -44,6 +47,7 @@
     "pako": "^2.1.0"
   },
   "devDependencies": {
-    "esbuild": "^0.19.0"
+    "esbuild": "^0.19.0",
+    "typescript": "^5.0.0"
   }
 }

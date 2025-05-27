@@ -43,4 +43,7 @@ await esbuild.build({
   minify: true,
 });
 
+// Copy type definitions
+fs.copyFileSync("src/index.d.ts", "lib/index.d.ts");
+
 console.log("Build completed successfully!");
