@@ -216,6 +216,27 @@ export class PDFDocument {
     return this;
   }
 
+  // LAB color methods
+  fillColorLab(L, a, b) {
+    this.currentColor = {
+      type: "lab",
+      L: Math.max(0, Math.min(100, L)),
+      a: Math.max(-128, Math.min(127, a)),
+      b: Math.max(-128, Math.min(127, b)),
+    };
+    return this;
+  }
+
+  strokeColorLab(L, a, b) {
+    this.currentStrokeColor = {
+      type: "lab",
+      L: Math.max(0, Math.min(100, L)),
+      a: Math.max(-128, Math.min(127, a)),
+      b: Math.max(-128, Math.min(127, b)),
+    };
+    return this;
+  }
+
   defineSpotColor(name, cmykFallback) {
     const spotColor = {
       name,
@@ -246,6 +267,39 @@ export class PDFDocument {
   // Convenience method for defining spot colors with CMYK values
   defineSpotColorCMYK(name, c, m, y, k) {
     return this.defineSpotColor(name, { c, m, y, k });
+  }
+
+  // Define LAB spot color
+  defineLabSpotColor(name, labFallback) {
+    const spotColor = {
+      name,
+      type: "lab",
+      fallback: {
+        L: Math.max(0, Math.min(100, labFallback.L)),
+        a: Math.max(-128, Math.min(127, labFallback.a)),
+        b: Math.max(-128, Math.min(127, labFallback.b)),
+      },
+    };
+    this.spotColors.set(name, spotColor);
+
+    // Register LAB spot color in resources
+    const colorSpaceName = `CS${
+      Object.keys(this.resources.ColorSpace).length + 1
+    }`;
+    this.resources.ColorSpace[colorSpaceName] = {
+      type: "Lab",
+      name: name,
+      alternateSpace: "Lab",
+      labFallback: spotColor.fallback,
+    };
+    spotColor.resourceName = colorSpaceName;
+
+    return this;
+  }
+
+  // Convenience method for defining LAB spot colors with LAB values
+  defineLabSpotColorLab(name, L, a, b) {
+    return this.defineLabSpotColor(name, { L, a, b });
   }
 
   fillSpotColor(name, tint = 1.0) {
@@ -371,6 +425,28 @@ export class PDFDocument {
     return key;
   }
 
+  _ensureLabColorSpace() {
+    // Check if we already have a LAB color space
+    for (const [name, cs] of Object.entries(this.resources.ColorSpace)) {
+      if (cs.type === "Lab" && !cs.name) {
+        // Generic LAB space, not a spot color
+        return name;
+      }
+    }
+
+    // Create a new LAB color space
+    const colorSpaceName = `LAB${
+      Object.keys(this.resources.ColorSpace).length + 1
+    }`;
+    this.resources.ColorSpace[colorSpaceName] = {
+      type: "Lab",
+      whitePoint: [0.95047, 1.0, 1.08883], // D65 white point
+      range: [0, 100, -128, 127, -128, 127], // L*, a*, and b* ranges
+    };
+
+    return colorSpaceName;
+  }
+
   _setColor(color, type) {
     switch (color.type) {
       case "rgb":
@@ -386,6 +462,19 @@ export class PDFDocument {
             color.m
           )} ${this._formatNumber(color.y)} ${this._formatNumber(color.k)} ${
             type === "fill" ? "k" : "K"
+          }`
+        );
+        break;
+      case "lab":
+        // For LAB colors, we need to use a device-independent color space
+        // First ensure we have a LAB color space resource
+        const labColorSpaceName = this._ensureLabColorSpace();
+        this.contentStream.push(
+          `/${labColorSpaceName} ${type === "fill" ? "cs" : "CS"}`,
+          `${this._formatNumber(color.L / 100)} ${this._formatNumber(
+            (color.a + 128) / 255
+          )} ${this._formatNumber((color.b + 128) / 255)} ${
+            type === "fill" ? "scn" : "SCN"
           }`
         );
         break;

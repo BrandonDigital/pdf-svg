@@ -1,13 +1,14 @@
 # pdf-svg
 
-A minimal, standalone PDF generator with SVG rendering, CMYK and spot color support. This package provides a lightweight alternative to PDFKit for creating PDFs with vector graphics, focusing specifically on CMYK and spot color workflows.
+A minimal, standalone PDF generator with SVG rendering, CMYK, LAB, and spot color support. This package provides a lightweight alternative to PDFKit for creating PDFs with vector graphics, focusing specifically on professional color workflows including CMYK, LAB, and spot colors.
 
 ## Features
 
 - **Minimal and standalone** - No dependencies on PDFKit or SVG-to-PDFKit
 - **TypeScript support** - Full type definitions included
 - **CMYK color space** - Native support for CMYK colors
-- **Spot colors** - Define and use spot colors (e.g., Pantone colors)
+- **LAB color space** - Device-independent LAB color support with utilities
+- **Spot colors** - Define and use CMYK and LAB spot colors (e.g., Pantone colors)
 - **SVG parsing** - Parse and render SVG elements to PDF
 - **Individual elements** - Each SVG element is rendered individually (not grouped)
 - **Shape support** - Rectangle, circle, ellipse, and path support
@@ -98,12 +99,37 @@ const pdfData: Buffer = doc.end();
 fs.writeFileSync("output.pdf", pdfData);
 ```
 
+### LAB Colors
+
+```javascript
+// Direct LAB colors (L*: 0-100, a*: -128 to 127, b*: -128 to 127)
+doc.rect(50, 50, 100, 50);
+doc.fillColorLab(53, 80, 67); // Vibrant red in LAB space
+doc.fill();
+
+// LAB spot colors
+doc.defineLabSpotColorLab("BrandRed", 53, 80, 67);
+doc.rect(200, 50, 100, 50);
+doc.fillSpotColor("BrandRed", 1.0);
+doc.fill();
+
+// Color conversion utilities
+import { LabColorUtility } from "pdf-svg/lab-color-utility";
+const labUtil = new LabColorUtility();
+const lab = labUtil.rgbToLab(255, 100, 50);
+const rgb = labUtil.labToRgb(53, 80, 67);
+```
+
 ### Spot Colors
 
 ```javascript
-// Define spot colors with CMYK fallback
+// Define CMYK spot colors with CMYK fallback
 doc.defineSpotColor("Pantone 185 C", { c: 0, m: 91, y: 76, k: 0 });
 doc.defineSpotColor("Gold", { c: 0, m: 20, y: 60, k: 20 });
+
+// Define LAB spot colors with LAB fallback
+doc.defineLabSpotColorLab("PreciseRed", 53, 80, 67);
+doc.defineLabSpotColorLab("PreciseBlue", 32, 79, -107);
 
 // Use spot colors
 doc.circle(100, 100, 50);
@@ -253,7 +279,23 @@ new PDFDocument(options);
 
 MIT
 
-## Usage Example: CMYK PDF with SVG Paths and mm Units
+## Working with Millimeter Dimensions
+
+PDF documents use points as their base unit (1 point = 1/72 inch), but for print design, millimeters are often more practical. Here's how to work with mm dimensions:
+
+### Converting mm to Points
+
+```js
+// Helper function to convert millimeters to points
+const mm = (val) => val * 2.835; // 1mm = 2.835 points
+
+// Common paper sizes in mm
+const A4 = { width: mm(210), height: mm(297) };
+const A3 = { width: mm(297), height: mm(420) };
+const Letter = { width: mm(215.9), height: mm(279.4) };
+```
+
+### Complete Example with mm Dimensions
 
 ```js
 import { PDFDocument } from "pdf-svg";
@@ -262,47 +304,155 @@ import fs from "fs";
 // Helper: mm to points
 const mm = (val) => val * 2.835;
 
-// SVG path for the character 'a' (no fill specified)
-const svgContent = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 37.85 54.14">
-  <path d="M.01,53.64L12.02.32c.04-.19.21-.32.4-.32h12.88c.19,0,.36.13.4.32l12.12,53.32c.06.26-.14.5-.4.5h-10.01c-.2,0-.36-.14-.4-.33l-2.54-12.94c-.04-.19-.21-.33-.4-.33h-10.93c-.2,0-.37.14-.4.33l-2.47,12.94c-.04.19-.21.33-.4.33H.41c-.26,0-.46-.24-.4-.5ZM14.62,32.41h8.1c.12,0,.22-.11.2-.24l-4.08-21.44c-.04-.22-.35-.22-.39,0l-4.02,21.44c-.02.12.07.24.2.24Z"/>
-</svg>
-`;
-
-// Create a PDF document sized 500mm x 300mm
+// Create a custom-sized PDF (500mm x 300mm landscape)
 const doc = new PDFDocument({
-  width: mm(500),
-  height: mm(300),
+  width: mm(500), // 500mm wide
+  height: mm(300), // 300mm tall
 });
 
-// Draw a CMYK background rectangle
-doc.rect(0, 0, mm(500), mm(300));
+// Example 1: Background with 10mm margins
+doc.rect(mm(10), mm(10), mm(480), mm(280)); // 10mm margin on all sides
 doc.fillColorCMYK(20, 20, 20, 100);
 doc.fill();
 
-// Draw a rectangle with a spot color stroke
-doc.defineSpotColor("thru-cut", { c: 88, m: 30, y: 0, k: 0 });
-doc.rect(mm(10), mm(10), mm(480), mm(280));
-doc.strokeSpotColor("thru-cut");
-doc.lineWidth(2);
-doc.stroke();
+// Example 2: Precise positioning with mm
+const logoX = mm(25); // 25mm from left
+const logoY = mm(250); // 250mm from bottom
+const logoWidth = mm(50); // 50mm wide
+const logoHeight = mm(30); // 30mm tall
 
-// Add SVG in the center, using only CMYK colors
-const centerX = mm(500) / 2;
-const centerY = mm(300) / 2;
-doc.addSVG(svgContent, centerX - 50, centerY - 70, {
-  width: 100,
-  height: 140,
-  useCMYK: true, // Ensures all SVG colors are converted to CMYK
-  colorCallback: (color) => {
-    // Override any color with white (CMYK knockout)
-    return "white";
-  },
+doc.rect(logoX, logoY, logoWidth, logoHeight);
+doc.fillColorCMYK(0, 100, 100, 0); // Magenta
+doc.fill();
+
+// Example 3: Grid layout using mm
+const gridSpacing = mm(20);
+const gridSize = mm(15);
+
+for (let x = 0; x < 5; x++) {
+  for (let y = 0; y < 3; y++) {
+    const posX = mm(50) + x * gridSpacing;
+    const posY = mm(50) + y * gridSpacing;
+
+    doc.circle(posX, posY, gridSize / 2);
+    doc.fillColorCMYK(0, 0, 100, 0); // Yellow
+    doc.fill();
+  }
+}
+
+// Example 4: SVG with mm positioning
+const svgContent = `<svg viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="40" fill="blue"/>
+</svg>`;
+
+doc.addSVG(svgContent, mm(200), mm(150), {
+  width: mm(80), // 80mm wide
+  height: mm(80), // 80mm tall
+  useCMYK: true,
+  colorCallback: () => ({ c: 100, m: 50, y: 0, k: 0 }), // Custom blue
 });
+
+// Example 5: Text area with mm margins (conceptual - no text support yet)
+const textAreaX = mm(300);
+const textAreaY = mm(50);
+const textAreaWidth = mm(150);
+const textAreaHeight = mm(200);
+
+doc.rect(textAreaX, textAreaY, textAreaWidth, textAreaHeight);
+doc.strokeColorCMYK(0, 0, 0, 100);
+doc.lineWidth(mm(0.5)); // 0.5mm line width
+doc.stroke();
 
 // Output the PDF
 const pdfData = doc.end();
 fs.writeFileSync("output.pdf", pdfData);
+```
+
+### Common Paper Sizes and Layouts
+
+```js
+// Standard paper sizes in mm
+const paperSizes = {
+  A4: { width: mm(210), height: mm(297) },
+  A3: { width: mm(297), height: mm(420) },
+  A5: { width: mm(148), height: mm(210) },
+  Letter: { width: mm(215.9), height: mm(279.4) },
+  Legal: { width: mm(215.9), height: mm(355.6) },
+  Tabloid: { width: mm(279.4), height: mm(431.8) },
+};
+
+// Business card (standard 85mm x 55mm)
+const businessCard = new PDFDocument({
+  width: mm(85),
+  height: mm(55),
+});
+
+// Poster (A1 size)
+const poster = new PDFDocument({
+  width: mm(594), // A1 width
+  height: mm(841), // A1 height
+});
+```
+
+### Bleed and Safe Areas
+
+```js
+// A4 with 3mm bleed
+const bleed = mm(3);
+const safeMargin = mm(5);
+
+const doc = new PDFDocument({
+  width: mm(210) + bleed * 2, // 216mm total width
+  height: mm(297) + bleed * 2, // 303mm total height
+});
+
+// Bleed area (extends beyond page)
+doc.rect(0, 0, mm(216), mm(303));
+doc.fillColorCMYK(0, 0, 0, 5); // Light gray bleed
+doc.fill();
+
+// Trim area (actual page size)
+doc.rect(bleed, bleed, mm(210), mm(297));
+doc.strokeColorCMYK(0, 0, 0, 100);
+doc.lineWidth(mm(0.1));
+doc.stroke();
+
+// Safe area (content should stay within this)
+doc.rect(
+  bleed + safeMargin,
+  bleed + safeMargin,
+  mm(210) - safeMargin * 2,
+  mm(297) - safeMargin * 2
+);
+doc.strokeColorCMYK(0, 100, 0, 0); // Magenta guide
+doc.lineWidth(mm(0.1));
+doc.stroke();
+```
+
+### Precise Measurements and Alignment
+
+```js
+// Center elements precisely
+const pageWidth = mm(210);
+const pageHeight = mm(297);
+const elementWidth = mm(80);
+const elementHeight = mm(60);
+
+const centerX = (pageWidth - elementWidth) / 2;
+const centerY = (pageHeight - elementHeight) / 2;
+
+doc.rect(centerX, centerY, elementWidth, elementHeight);
+
+// Create margins and gutters
+const margin = mm(20);
+const gutter = mm(5);
+const columnWidth = (pageWidth - margin * 2 - gutter) / 2;
+
+// Left column
+doc.rect(margin, margin, columnWidth, mm(100));
+
+// Right column
+doc.rect(margin + columnWidth + gutter, margin, columnWidth, mm(100));
 ```
 
 **Key Points:**
@@ -312,6 +462,8 @@ fs.writeFileSync("output.pdf", pdfData);
 - Use millimeters for all dimensions by converting to points (`mm(val)`).
 - Spot colors can be defined and used for strokes or fills.
 - All numbers are automatically validated and formatted to prevent "Too few operands" errors.
+- Consider bleed areas (typically 3mm) for print-ready documents.
+- Use safe margins (typically 5mm) to ensure content doesn't get cut off.
 
 ### Alternative Ways to Set SVG Colors in Code
 

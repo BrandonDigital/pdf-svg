@@ -15,6 +15,55 @@ export class PDFWriter {
     return Number(num.toFixed(6)).toString();
   }
 
+  // Helper function to convert LAB to RGB
+  labToRgb(L, a, b) {
+    // Convert LAB to XYZ
+    const fy = (L + 16) / 116;
+    const fx = a / 500 + fy;
+    const fz = fy - b / 200;
+
+    const xn = 0.95047;
+    const yn = 1.0;
+    const zn = 1.08883;
+
+    const x = (fx > 0.206897 ? Math.pow(fx, 3) : (fx - 16 / 116) / 7.787) * xn;
+    const y = (fy > 0.206897 ? Math.pow(fy, 3) : (fy - 16 / 116) / 7.787) * yn;
+    const z = (fz > 0.206897 ? Math.pow(fz, 3) : (fz - 16 / 116) / 7.787) * zn;
+
+    // Convert XYZ to RGB
+    let r = x * 3.2404542 + y * -1.5371385 + z * -0.4985314;
+    let g = x * -0.969266 + y * 1.8760108 + z * 0.041556;
+    let bl = x * 0.0556434 + y * -0.2040259 + z * 1.0572252;
+
+    // Apply gamma correction
+    r = r > 0.0031308 ? 1.055 * Math.pow(r, 1 / 2.4) - 0.055 : 12.92 * r;
+    g = g > 0.0031308 ? 1.055 * Math.pow(g, 1 / 2.4) - 0.055 : 12.92 * g;
+    bl = bl > 0.0031308 ? 1.055 * Math.pow(bl, 1 / 2.4) - 0.055 : 12.92 * bl;
+
+    return {
+      r: Math.max(0, Math.min(1, r)),
+      g: Math.max(0, Math.min(1, g)),
+      b: Math.max(0, Math.min(1, bl)),
+    };
+  }
+
+  // Helper function to convert RGB to CMYK
+  rgbToCmyk(r, g, b) {
+    const k = 1 - Math.max(r, g, b);
+    if (k === 1) {
+      return { c: 0, m: 0, y: 0, k: 1 };
+    }
+    const c = (1 - r - k) / (1 - k);
+    const m = (1 - g - k) / (1 - k);
+    const y = (1 - b - k) / (1 - k);
+    return {
+      c: Math.max(0, Math.min(1, c)),
+      m: Math.max(0, Math.min(1, m)),
+      y: Math.max(0, Math.min(1, y)),
+      k: Math.max(0, Math.min(1, k)),
+    };
+  }
+
   generatePDF(doc) {
     // Reset state
     this.objectCount = 0;
@@ -27,6 +76,7 @@ export class PDFWriter {
     const pageRef = this.allocateObject();
     const contentRef = this.allocateObject();
     const resourcesRef = this.allocateObject();
+    const metadataRef = this.allocateObject();
 
     // Build content stream
     const contentStream = doc.contentStream.join("\n");
@@ -43,6 +93,21 @@ export class PDFWriter {
     if (extGStateDict) {
       resources.ExtGState = extGStateDict;
     }
+
+    // Generate XMP metadata with PlateNames
+    const plateNames = this.getPlateNames(doc.resources.ColorSpace);
+    const xmpMetadata = this.generateXMPMetadata(plateNames);
+
+    // Metadata object
+    this.addObject(
+      metadataRef,
+      {
+        Type: "/Metadata",
+        Subtype: "/XML",
+        Length: xmpMetadata.length,
+      },
+      xmpMetadata
+    );
 
     // Resources object
     this.addObject(resourcesRef, resources);
@@ -79,6 +144,7 @@ export class PDFWriter {
     this.addObject(catalogRef, {
       Type: "/Catalog",
       Pages: `${pagesRef} 0 R`,
+      Metadata: `${metadataRef} 0 R`,
     });
 
     // Build PDF
@@ -183,6 +249,37 @@ export class PDFWriter {
         this.objects[csRef] = separationArray;
 
         lines.push(`/${name} ${csRef} 0 R`);
+      } else if (cs.type === "Lab") {
+        const csRef = this.allocateObject();
+
+        if (cs.name) {
+          // LAB spot color - create separation color space exactly like official PDF
+          const colorName = cs.name.replace(/[\s()]/g, "#20");
+
+          // Create LAB color space object exactly like the official PDF
+          const labRef = this.allocateObject();
+          this.objects[labRef] =
+            "[/Lab<</BlackPoint[0.0 0.0 0.0]/Range[-128.0 127.0 -128.0 127.0]/WhitePoint[0.964203 1.0 0.824905]>>]";
+
+          // Create the separation array with inline function (matching official PDF structure)
+          const separationArray = `[/Separation/${colorName} ${labRef} 0 R<</C0[100.0 0.0 0.0]/C1[${this.formatNumber(
+            cs.labFallback.L
+          )} ${this.formatNumber(cs.labFallback.a)} ${this.formatNumber(
+            cs.labFallback.b
+          )}]/Domain[0 1]/FunctionType 2/N 1.0/Range[0.0 100.0 -128.0 127.0 -128.0 127.0]>>]`;
+
+          this.objects[csRef] = separationArray;
+        } else {
+          // Generic LAB color space
+          const labArray = `[/Lab << /WhitePoint [${cs.whitePoint
+            .map((n) => this.formatNumber(n))
+            .join(" ")}] /Range [${cs.range
+            .map((n) => this.formatNumber(n))
+            .join(" ")}] >>]`;
+          this.objects[csRef] = labArray;
+        }
+
+        lines.push(`/${name} ${csRef} 0 R`);
       }
     }
 
@@ -205,5 +302,50 @@ export class PDFWriter {
 
     lines.push(">>");
     return lines.join("\n");
+  }
+
+  getPlateNames(colorSpaces) {
+    const plateNames = [];
+    for (const [name, cs] of Object.entries(colorSpaces)) {
+      if (cs.type === "Separation" || (cs.type === "Lab" && cs.name)) {
+        plateNames.push(cs.name);
+      }
+    }
+    return plateNames;
+  }
+
+  generateXMPMetadata(plateNames) {
+    const currentDate = new Date().toISOString();
+
+    let plateNamesXML = "";
+    if (plateNames.length > 0) {
+      plateNamesXML = `
+         <xmpTPg:PlateNames>
+            <rdf:Seq>
+${plateNames
+  .map((name) => `               <rdf:li>${name}</rdf:li>`)
+  .join("\n")}
+            </rdf:Seq>
+         </xmpTPg:PlateNames>`;
+    }
+
+    return `<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Adobe XMP Core 9.1-c001 79.675d0f7, 2023/06/11-19:21:16">
+   <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description rdf:about=""
+            xmlns:dc="http://purl.org/dc/elements/1.1/"
+            xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+            xmlns:xmpTPg="http://ns.adobe.com/xap/1.0/t/pg/"
+            xmlns:stDim="http://ns.adobe.com/xap/1.0/sType/Dimensions#">
+         <dc:format>application/pdf</dc:format>
+         <xmp:MetadataDate>${currentDate}</xmp:MetadataDate>
+         <xmp:ModifyDate>${currentDate}</xmp:ModifyDate>
+         <xmp:CreateDate>${currentDate}</xmp:CreateDate>
+         <xmp:CreatorTool>pdf-svg LAB Color Generator</xmp:CreatorTool>
+         <xmpTPg:NPages>1</xmpTPg:NPages>${plateNamesXML}
+      </rdf:Description>
+   </rdf:RDF>
+</x:xmpmeta>
+<?xpacket end="w"?>`;
   }
 }

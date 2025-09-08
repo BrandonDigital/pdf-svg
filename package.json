@@ -1,7 +1,7 @@
 {
   "name": "pdf-svg",
-  "version": "1.0.0",
-  "description": "Minimal PDF generator with SVG rendering, CMYK and spot color support",
+  "version": "1.1.0",
+  "description": "Minimal PDF generator with SVG rendering, CMYK, LAB, and spot color support",
   "main": "lib/index.js",
   "module": "lib/index.js",
   "browser": "lib/pdf-svg.browser.js",
@@ -25,11 +25,14 @@
     "pdf",
     "svg",
     "cmyk",
+    "lab",
     "spot-color",
     "pantone",
+    "color-space",
     "vector",
     "graphics",
-    "print"
+    "print",
+    "professional"
   ],
   "author": "",
   "license": "MIT",
